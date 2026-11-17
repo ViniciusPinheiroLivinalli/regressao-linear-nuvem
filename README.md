@@ -57,3 +57,6 @@ curl -X POST http://localhost:8000/reset
 - **Sem persistência:** o diretório `model_store/` é limpo a cada start.
 - **Regressão:** `LinearRegression` do scikit-learn por enquanto (decisão em aberto); a troca é isolada em `app/ml/model.py`.
 - **Configuração por ambiente:** `MAX_UPLOAD_BYTES`, `MIN_TRAIN_ROWS`, `CV_SPLITS`, `MODEL_STORE_DIR`.
+
+
+https://excalidraw.com/#json=MPl7fA3qPLxtOvtaFTFKZ,yhAzFy-F5FQ58w4f1QVC9g
