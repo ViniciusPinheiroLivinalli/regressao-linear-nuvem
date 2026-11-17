@@ -1,3 +1,9 @@
-.venv
 .git
+.venv
 __pycache__
+*.pyc
+.pytest_cache
+tests
+model_store
+data
+.env
