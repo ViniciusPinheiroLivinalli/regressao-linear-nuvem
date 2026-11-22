@@ -15,6 +15,7 @@ class PredictionResult:
     n_rows: int
     metrics: dict | None
     csv: str
+    expected_metrics: dict
 
 
 def train(store: ModelStore, raw: bytes) -> dict:
@@ -64,4 +65,5 @@ def predict(store: ModelStore, raw: bytes) -> PredictionResult:
         n_rows=len(df),
         metrics=metrics,
         csv=out.to_csv(index=False),
+        expected_metrics=trained.metrics,
     )

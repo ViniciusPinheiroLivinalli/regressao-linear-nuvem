@@ -23,3 +23,8 @@ class NoModelError(AppError):
 
 class BusyError(AppError):
     status_code = 409
+
+
+class CompressionError(AppError):
+    """Payload Huffman malformado ou corrompido."""
+    status_code = 400

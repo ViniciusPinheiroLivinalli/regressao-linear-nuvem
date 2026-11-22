@@ -1,15 +1,24 @@
+import base64
 import io
 
 import numpy as np
 import pandas as pd
 
-from app import config
+from app import config, huffman
 from tests.conftest import to_bytes
 
 
 def post_csv(client, path, df_or_bytes):
+    """Envia como o navegador: CSV compactado com Huffman."""
     raw = df_or_bytes if isinstance(df_or_bytes, bytes) else to_bytes(df_or_bytes)
-    return client.post(path, files={"file": ("data.csv", raw, "text/csv")})
+    packed = huffman.compactar(raw)
+    return client.post(path, files={"file": ("dados.huff", packed, "application/octet-stream")})
+
+
+def predictions(body) -> pd.DataFrame:
+    """Descompacta o CSV de previsoes devolvido pela API."""
+    raw = huffman.descompactar(base64.b64decode(body["predictions_huff"]))
+    return pd.read_csv(io.StringIO(raw.decode("utf-8")))
 
 
 def test_health_and_initial_status(client):
@@ -82,7 +91,7 @@ def test_predict_labeled(client, train_df, test_df):
     body = r.json()
     assert body["labeled"] is True and body["n_rows"] == len(test_df)
 
-    out = pd.read_csv(io.StringIO(body["predictions_csv"]))
+    out = predictions(body)
     assert list(out.columns) == config.TRAIN_COLUMNS + ["prediction"]
     assert np.allclose(out[config.TRAIN_COLUMNS].to_numpy(), test_df.to_numpy())  # ordem preservada
 
@@ -98,16 +107,15 @@ def test_predict_unlabeled(client, train_df, test_df):
     body = r.json()
     assert r.status_code == 200
     assert body["labeled"] is False and body["metrics"] is None
-    out = pd.read_csv(io.StringIO(body["predictions_csv"]))
+    out = predictions(body)
     assert list(out.columns) == config.FEATURES + ["prediction"]
     assert len(out) == len(test_df)
 
 
 def test_predict_matches_labeled_predictions(client, train_df, test_df):
     post_csv(client, "/train", train_df)
-    a = pd.read_csv(io.StringIO(post_csv(client, "/predict", test_df).json()["predictions_csv"]))
-    b = pd.read_csv(io.StringIO(
-        post_csv(client, "/predict", test_df.drop(columns="time")).json()["predictions_csv"]))
+    a = predictions(post_csv(client, "/predict", test_df).json())
+    b = predictions(post_csv(client, "/predict", test_df.drop(columns="time")).json())
     assert np.allclose(a["prediction"], b["prediction"])
 
 
@@ -143,3 +151,29 @@ def test_reset_during_training_409(client):
 
 def test_reset_without_model_is_ok(client):
     assert client.post("/reset").status_code == 200
+
+
+# --- Compactacao ponta-a-ponta ---
+def test_plain_csv_upload_rejected_400(client, train_df):
+    r = client.post("/train", files={"file": ("data.csv", to_bytes(train_df), "text/csv")})
+    assert r.status_code == 400
+    assert "compactado" in r.json()["detail"]
+
+
+def test_corrupted_payload_400(client, train_df):
+    packed = bytearray(huffman.compactar(to_bytes(train_df)))
+    del packed[300:]  # trunca o corpo
+    r = client.post("/train", files={"file": ("dados.huff", bytes(packed), "application/octet-stream")})
+    assert r.status_code == 400
+
+
+def test_declared_size_over_limit_413(client, monkeypatch, train_df):
+    packed = huffman.compactar(to_bytes(train_df))
+    monkeypatch.setattr(config, "MAX_UPLOAD_BYTES", len(packed) + 10)
+    assert post_csv(client, "/train", train_df).status_code == 413
+
+
+def test_predict_returns_expected_metrics(client, train_df, test_df):
+    trained = post_csv(client, "/train", train_df).json()
+    body = post_csv(client, "/predict", test_df).json()
+    assert body["expected_metrics"] == trained
