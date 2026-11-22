@@ -4,9 +4,337 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Regressão Linear na Nuvem</title>
+  <style>
+    :root {
+      --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6677;
+      --border: #dde1e8; --accent: #2457c5; --accent-text: #ffffff;
+      --ok: #1f7a4d; --ok-bg: #e5f4ec; --err: #b42318; --err-bg: #fdecea;
+      --warn: #8a5a00; --warn-bg: #fff4dc;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12151b; --card: #1b2029; --text: #e6e9ef; --muted: #9aa3b2;
+        --border: #2d3442; --accent: #6f9bff; --accent-text: #0d1220;
+        --ok: #6fd3a0; --ok-bg: #16332a; --err: #ff8a80; --err-bg: #3a1c1a;
+        --warn: #ffcf70; --warn-bg: #3a2f14;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.5rem; margin: 0 0 4px; }
+    .subtitle { color: var(--muted); margin: 0 0 24px; }
+    section {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 20px; margin-bottom: 16px;
+    }
+    h2 { font-size: 1.1rem; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+    .step {
+      display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+      background: var(--accent); color: var(--accent-text); font-size: .8rem;
+    }
+    .hint { color: var(--muted); font-size: .9rem; margin: 0 0 12px; }
+    form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    input[type=file] { flex: 1 1 240px; min-width: 0; color: var(--text); }
+    button {
+      border: 0; border-radius: 6px; padding: 8px 16px; font: inherit; font-weight: 600;
+      background: var(--accent); color: var(--accent-text); cursor: pointer;
+    }
+    button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+    button.danger { background: transparent; color: var(--err); border: 1px solid var(--err); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .status { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; }
+    .badge { padding: 2px 10px; border-radius: 999px; font-size: .85rem; font-weight: 600; }
+    .badge.on { background: var(--ok-bg); color: var(--ok); }
+    .badge.off { background: var(--warn-bg); color: var(--warn); }
+    .msg { margin-top: 12px; padding: 10px 12px; border-radius: 6px; font-size: .9rem; }
+    .msg.error { background: var(--err-bg); color: var(--err); }
+    .msg.info { background: var(--ok-bg); color: var(--ok); }
+    .table-wrap { overflow-x: auto; margin-top: 12px; }
+    table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+    th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-weight: 600; font-size: .85rem; }
+    .good { color: var(--ok); }
+    .bad { color: var(--err); }
+    .spinner {
+      display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor;
+      border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: -2px; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    [hidden] { display: none !important; }
+  </style>
 </head>
 <body>
+<main>
   <h1>Regressão Linear na Nuvem</h1>
-  <p>A interface será implementada na Issue 9. A API está disponível; veja <a href="/docs">/docs</a>.</p>
+  <p class="subtitle">Série temporal: prevê <code>time</code> a partir de <code>time-5</code> … <code>time-1</code>. Os arquivos trafegam compactados com Huffman nos dois sentidos.</p>
+
+  <section aria-labelledby="status-title">
+    <h2 id="status-title">Estado do modelo</h2>
+    <div class="status">
+      <span id="status-badge" class="badge off">Carregando…</span>
+      <span id="status-detail" class="hint" style="margin:0"></span>
+      <button id="reset-btn" class="danger" type="button" style="margin-left:auto">Resetar modelo</button>
+    </div>
+    <div id="reset-msg" hidden></div>
+  </section>
+
+  <section aria-labelledby="train-title">
+    <h2 id="train-title"><span class="step">1</span>Treino</h2>
+    <p class="hint">CSV com as colunas <code>time-5,time-4,time-3,time-2,time-1,time</code>. O desempenho esperado é estimado por validação cronológica (TimeSeriesSplit).</p>
+    <form id="train-form">
+      <input id="train-file" type="file" accept=".csv,text/csv" required>
+      <button type="submit">Treinar</button>
+    </form>
+    <div id="train-msg" hidden></div>
+    <div id="expected" hidden>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Desempenho esperado</th><th>Média</th><th>Desvio padrão</th></tr></thead>
+          <tbody id="expected-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="test-title">
+    <h2 id="test-title"><span class="step">2</span>Teste / aplicação</h2>
+    <p class="hint">Com a coluna <code>time</code>: calcula o desempenho real. Sem ela: só gera as previsões.</p>
+    <form id="test-form">
+      <input id="test-file" type="file" accept=".csv,text/csv" required>
+      <button type="submit">Prever</button>
+    </form>
+    <div id="test-msg" hidden></div>
+    <div id="result" hidden>
+      <div id="comparison" hidden>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Métrica</th><th>Esperado</th><th>Real</th><th>Diferença</th></tr></thead>
+            <tbody id="comparison-body"></tbody>
+          </table>
+        </div>
+        <p class="hint" style="margin-top:8px">Verde: o real ficou dentro da faixa esperada (média ± 1 desvio padrão) ou melhor que ela.</p>
+      </div>
+      <p style="margin:12px 0 0"><button id="download-btn" class="secondary" type="button">Baixar previsões (.csv)</button></p>
+    </div>
+  </section>
+</main>
+
+<script src="huffman.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const METRICS = [
+    { key: "rmse", label: "RMSE", lowerIsBetter: true },
+    { key: "mae", label: "MAE", lowerIsBetter: true },
+    { key: "r2", label: "R²", lowerIsBetter: false },
+  ];
+  let expectedMetrics = null;
+  let lastCsv = null;
+  let lastName = "previsoes.csv";
+  let busy = false;
+
+  const kb = (n) => (n / 1024).toFixed(1) + " KB";
+  const ratio = (orig, packed) => `${kb(orig)} → ${kb(packed)} (${(100 * packed / orig).toFixed(0)}%)`;
+  const fmt = (v) => (v === null || v === undefined || Number.isNaN(v)) ? "—" : Number(v).toFixed(4);
+
+  function showMsg(el, kind, text) {
+    el.className = "msg " + kind;
+    el.textContent = text;
+    el.hidden = false;
+  }
+  function hideMsg(el) { el.hidden = true; el.textContent = ""; }
+
+  function setBusy(on, button, label) {
+    busy = on;
+    document.querySelectorAll("button, input[type=file]").forEach((b) => { b.disabled = on; });
+    if (button) {
+      if (on) {
+        button.dataset.label = button.textContent;
+        button.innerHTML = '<span class="spinner"></span>' + label;
+      } else if (button.dataset.label) {
+        button.textContent = button.dataset.label;
+      }
+    }
+  }
+
+  async function api(path, options) {
+    let res;
+    try {
+      res = await fetch(path, options);
+    } catch (e) {
+      throw new Error("Não foi possível falar com o servidor.");
+    }
+    let body = null;
+    try { body = await res.json(); } catch (e) { /* resposta sem JSON */ }
+    if (!res.ok) {
+      let detail = body && body.detail;
+      if (Array.isArray(detail)) detail = detail.map((d) => d.msg).join("; ");
+      throw new Error(detail || `Erro ${res.status}`);
+    }
+    return body;
+  }
+
+  function renderExpected(m) {
+    expectedMetrics = m;
+    if (!m) { $("expected").hidden = true; return; }
+    $("expected-body").innerHTML = METRICS.map((x) =>
+      `<tr><td>${x.label}</td><td>${fmt(m[x.key + "_mean"])}</td><td>${fmt(m[x.key + "_std"])}</td></tr>`
+    ).join("");
+    $("expected").hidden = false;
+  }
+
+  function renderStatus(s) {
+    const badge = $("status-badge");
+    if (s.trained) {
+      badge.className = "badge on";
+      badge.textContent = "Modelo treinado";
+      const when = new Date(s.trained_at).toLocaleString("pt-BR");
+      $("status-detail").textContent = `${s.n_rows} linhas · ${when}`;
+    } else {
+      badge.className = "badge off";
+      badge.textContent = "Sem modelo";
+      $("status-detail").textContent = "Envie um CSV de treino para começar.";
+    }
+    $("test-form").querySelector("button").title = s.trained ? "" : "Treine um modelo primeiro";
+    renderExpected(s.trained ? s.metrics : null);
+  }
+
+  async function refreshStatus() {
+    try {
+      renderStatus(await api("/status"));
+    } catch (e) {
+      $("status-badge").className = "badge off";
+      $("status-badge").textContent = "Servidor indisponível";
+      $("status-detail").textContent = e.message;
+    }
+  }
+
+  function renderComparison(real) {
+    if (!real) { $("comparison").hidden = true; return; }
+    $("comparison-body").innerHTML = METRICS.map((x) => {
+      const mean = expectedMetrics ? expectedMetrics[x.key + "_mean"] : null;
+      const std = expectedMetrics ? expectedMetrics[x.key + "_std"] : null;
+      const r = real[x.key];
+      let diff = "—", cls = "";
+      if (mean !== null && mean !== undefined && r !== null && r !== undefined) {
+        const d = r - mean;
+        diff = (d >= 0 ? "+" : "") + d.toFixed(4);
+        const worse = x.lowerIsBetter ? d : -d; // > 0 significa pior que a média
+        cls = worse <= (std || 0) ? "good" : "bad";
+      }
+      const expected = mean === null || mean === undefined ? "—" : `${fmt(mean)} ± ${fmt(std)}`;
+      return `<tr><td>${x.label}</td><td>${expected}</td><td class="${cls}">${fmt(r)}</td><td class="${cls}">${diff}</td></tr>`;
+    }).join("");
+    $("comparison").hidden = false;
+  }
+
+  // Compacta o arquivo escolhido com Huffman antes do envio.
+  async function packFile(input) {
+    const original = new Uint8Array(await input.files[0].arrayBuffer());
+    const packed = Huffman.compactar(original);
+    const fd = new FormData();
+    fd.append("file", new Blob([packed], { type: "application/octet-stream" }), "dados.huff");
+    return { fd, original: original.length, packed: packed.length };
+  }
+
+  function base64ToBytes(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  $("train-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (busy) return;
+    const msg = $("train-msg");
+    hideMsg(msg);
+    const btn = ev.submitter || ev.target.querySelector("button");
+    setBusy(true, btn, "Treinando…");
+    try {
+      const up = await packFile($("train-file"));
+      await api("/train", { method: "POST", body: up.fd });
+      $("result").hidden = true;
+      lastCsv = null;
+      showMsg(msg, "info", `Modelo treinado com sucesso. Envio compactado: ${ratio(up.original, up.packed)}.`);
+    } catch (e) {
+      showMsg(msg, "error", e.message);
+    } finally {
+      setBusy(false, btn);
+      await refreshStatus();
+    }
+  });
+
+  $("test-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (busy) return;
+    const msg = $("test-msg");
+    hideMsg(msg);
+    $("result").hidden = true;
+    const input = $("test-file");
+    const btn = ev.submitter || ev.target.querySelector("button");
+    setBusy(true, btn, "Prevendo…");
+    try {
+      const up = await packFile(input);
+      const r = await api("/predict", { method: "POST", body: up.fd });
+      const packed = base64ToBytes(r.predictions_huff);
+      lastCsv = Huffman.descompactar(packed);
+      lastName = input.files[0].name.replace(/\.csv$/i, "") + "_previsoes.csv";
+      if (r.expected_metrics) expectedMetrics = r.expected_metrics;
+      renderComparison(r.labeled ? r.metrics : null);
+      const sizes = `Envio: ${ratio(up.original, up.packed)} · retorno: ${ratio(lastCsv.length, packed.length)}.`;
+      showMsg(msg, "info", (r.labeled
+        ? `${r.n_rows} linhas previstas. O arquivo tem rótulos, então o desempenho real foi calculado. `
+        : `${r.n_rows} linhas previstas. O arquivo não tem rótulos, então não há avaliação. `) + sizes);
+      $("result").hidden = false;
+    } catch (e) {
+      showMsg(msg, "error", e.message);
+    } finally {
+      setBusy(false, btn);
+    }
+  });
+
+  $("download-btn").addEventListener("click", () => {
+    if (!lastCsv) return;
+    const url = URL.createObjectURL(new Blob([lastCsv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = lastName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
+  $("reset-btn").addEventListener("click", async () => {
+    if (busy) return;
+    if (!confirm("Apagar o modelo treinado? Será preciso treinar de novo.")) return;
+    const msg = $("reset-msg");
+    hideMsg(msg);
+    setBusy(true, $("reset-btn"), "Resetando…");
+    try {
+      await api("/reset", { method: "POST" });
+      $("result").hidden = true;
+      hideMsg($("train-msg"));
+      hideMsg($("test-msg"));
+      lastCsv = null;
+      showMsg(msg, "info", "Modelo resetado. Pronto para treinar em outra base.");
+    } catch (e) {
+      showMsg(msg, "error", e.message);
+    } finally {
+      setBusy(false, $("reset-btn"));
+      await refreshStatus();
+    }
+  });
+
+  refreshStatus();
+})();
+</script>
 </body>
 </html>
