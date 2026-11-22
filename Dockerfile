@@ -1,9 +1,13 @@
 FROM python:3.12-slim
 
+# Commit da imagem, exposto em /health para conferir qual versao esta no ar.
+ARG APP_VERSION=dev
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
-    MODEL_STORE_DIR=/app/model_store
+    MODEL_STORE_DIR=/app/model_store \
+    APP_VERSION=${APP_VERSION}
 
 WORKDIR /app
 

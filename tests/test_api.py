@@ -22,7 +22,7 @@ def predictions(body) -> pd.DataFrame:
 
 
 def test_health_and_initial_status(client):
-    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/health").json()["status"] == "ok"
     status = client.get("/status").json()
     assert status["trained"] is False and status["metrics"] is None
 
