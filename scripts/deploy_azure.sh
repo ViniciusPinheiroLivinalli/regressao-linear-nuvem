@@ -44,6 +44,8 @@ if ! az acr show -n "$ACR_NAME" -g "$RG" -o none 2>/dev/null; then
 fi
 ACR_SERVER="$(az acr show -n "$ACR_NAME" --query loginServer -o tsv)"
 IMAGE="$ACR_SERVER/$IMAGE_REPO:$TAG"
+# O app roda sempre a tag "latest": e ela que a entrega continua (CD) observa.
+IMAGE_LATEST="$ACR_SERVER/$IMAGE_REPO:latest"
 
 if [[ "${BUILD:-acr}" == "local" ]]; then
   # Build com o Docker local (Docker Desktop). Necessario em assinaturas que
@@ -52,10 +54,11 @@ if [[ "${BUILD:-acr}" == "local" ]]; then
   CONTEXT="."
   if [[ "$DOCKER" == *.exe ]]; then CONTEXT="$(wslpath -w .)"; fi  # docker.exe do Windows via WSL
   echo "==> Build local da imagem ($IMAGE)"
-  "$DOCKER" build --platform linux/amd64 -t "$IMAGE" -f "$CONTEXT/Dockerfile" "$CONTEXT"
+  "$DOCKER" build --platform linux/amd64 --build-arg "APP_VERSION=$TAG" -t "$IMAGE" -t "$IMAGE_LATEST" -f "$CONTEXT/Dockerfile" "$CONTEXT"
   az acr credential show -n "$ACR_NAME" --query 'passwords[0].value' -o tsv \
     | "$DOCKER" login "$ACR_SERVER" -u "$(az acr credential show -n "$ACR_NAME" --query username -o tsv)" --password-stdin
   "$DOCKER" push "$IMAGE"
+  "$DOCKER" push "$IMAGE_LATEST"
 else
   echo "==> Build da imagem no ACR ($IMAGE)"
   az acr build -r "$ACR_NAME" -t "$IMAGE_REPO:$TAG" -t "$IMAGE_REPO:latest" -f Dockerfile .
@@ -73,13 +76,13 @@ ACR_PASS="$(az acr credential show -n "$ACR_NAME" --query 'passwords[0].value' -
 echo "==> Web App"
 if ! az webapp show -n "$APP_NAME" -g "$RG" -o none 2>/dev/null; then
   az webapp create -n "$APP_NAME" -g "$RG" -p "$PLAN" \
-    --container-image-name "$IMAGE" \
+    --container-image-name "$IMAGE_LATEST" \
     --container-registry-url "https://$ACR_SERVER" \
     --container-registry-user "$ACR_USER" \
     --container-registry-password "$ACR_PASS" -o none
 fi
 az webapp config container set -n "$APP_NAME" -g "$RG" \
-  --container-image-name "$IMAGE" \
+  --container-image-name "$IMAGE_LATEST" \
   --container-registry-url "https://$ACR_SERVER" \
   --container-registry-user "$ACR_USER" \
   --container-registry-password "$ACR_PASS" -o none
@@ -92,6 +95,19 @@ az webapp config set -n "$APP_NAME" -g "$RG" -o none \
   --always-on true --min-tls-version 1.2 \
   --generic-configurations '{"healthCheckPath": "/health"}'
 az appservice plan update -n "$PLAN" -g "$RG" --number-of-workers 1 -o none
+
+echo "==> Entrega continua: push de :latest no ACR reinicia o app com a imagem nova"
+# O webhook do ACR chama o SCM (Kudu) com credencial basica; apps novos vem com ela desligada.
+az resource update -g "$RG" --namespace Microsoft.Web --resource-type basicPublishingCredentialsPolicies \
+  --parent "sites/$APP_NAME" -n scm --set properties.allow=true -o none
+CD_URL="$(az webapp deployment container config -n "$APP_NAME" -g "$RG" --enable-cd true --query CI_CD_URL -o tsv)"
+if az acr webhook show -r "$ACR_NAME" -n webappcd -o none 2>/dev/null; then
+  az acr webhook update -r "$ACR_NAME" -n webappcd --uri "$CD_URL" --actions push \
+    --scope "$IMAGE_REPO:latest" -o none
+else
+  az acr webhook create -r "$ACR_NAME" -n webappcd --uri "$CD_URL" --actions push \
+    --scope "$IMAGE_REPO:latest" -o none
+fi
 
 az webapp restart -n "$APP_NAME" -g "$RG" -o none
 

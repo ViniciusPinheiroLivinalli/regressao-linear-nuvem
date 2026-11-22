@@ -34,6 +34,18 @@ docker run --rm -p 8000:8000 regressao-linear
 Produção: **https://regressao-linear-d9527f.azurewebsites.net** (App Service Linux B1, região
 `brazilsouth`, 1 instância, só HTTPS, health check em `/health`).
 
+**Deploy automático:** todo push na `main` roda o workflow `.github/workflows/deploy.yml`.
+Ele roda os testes e, se passarem, constrói a imagem e envia para o ACR com a tag `latest`.
+Um webhook do ACR avisa o App Service, que baixa a imagem e reinicia. O workflow só termina
+verde quando o `/health` responde com o commit novo em `version` (leva uns 3 a 5 minutos).
+PRs para a `main` só rodam os testes. Secrets usados: `ACR_LOGIN_SERVER`, `ACR_USERNAME`
+e `ACR_PASSWORD`.
+
+> Cada deploy reinicia o app e **apaga o modelo treinado**. Não deem push na `main`
+> durante a apresentação.
+
+Deploy manual (cria a infraestrutura do zero ou publica sem passar pelo GitHub):
+
 ```bash
 pip install azure-cli          # ou o instalador oficial
 az login --use-device-code
