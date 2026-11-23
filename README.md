@@ -81,12 +81,30 @@ Diagrama original do grupo: [Excalidraw](https://excalidraw.com/#json=MPl7fA3qPL
 - **Min-max sem vazamento de dados:** o scaler aprende mínimo e máximo **só com o treino**. No
   teste ele apenas transforma os dados. Na validação cruzada, é reajustado a cada fold.
 - **Desempenho esperado com `TimeSeriesSplit(5)`:**
-  - **Por quê:** é uma série temporal. Embaralhar os dados (k-fold comum) deixaria o modelo treinar
-    com o futuro e avaliar no passado, o que dá uma estimativa otimista demais.
-  - **Como funciona:** cada fold treina com o início da série e avalia no trecho seguinte (janela
+  - **Por quê:** é a escolha segura para série temporal. Ela nunca usa linhas posteriores para
+    prever anteriores, então não arrisca uma estimativa otimista por vazamento do futuro.
+  - **Como funciona:** cada fold treina com o início do arquivo e avalia no trecho seguinte (janela
     expansiva).
   - **Resultado:** o esperado é a média e o desvio padrão de RMSE, MAE e R² nos 5 folds. Depois
     disso, o modelo final é treinado com a base inteira.
+  - **Conferência com a base do professor:** cada linha é uma janela independente; as linhas
+    seguidas não são a mesma série deslocada. Por isso conferimos também um k-fold embaralhado,
+    que deu praticamente o mesmo resultado: RMSE 83 com `TimeSeriesSplit` contra 85 com k-fold.
+    A estimativa não depende da ordem das linhas.
+- **Resultado com a base do professor:**
+
+  | Métrica | Esperado (validação) | Real (teste) |
+  |---|---|---|
+  | RMSE | 83,1 ± 13,6 | 113,0 |
+  | MAE | 60,7 ± 5,9 | 82,1 |
+  | R² | 0,397 ± 0,110 | 0,311 |
+
+  - **Erro absoluto maior que o esperado:** RMSE e MAE ficaram acima da faixa porque o teste é
+    mais disperso que o treino (desvio padrão de `time` ≈ 136 contra ≈ 107).
+  - **R² dentro da faixa:** o R² desconta essa dispersão, ou seja, o modelo explica a variação na
+    proporção prevista.
+  - **Melhor que a referência ingênua:** prever sempre a média do treino daria RMSE 140, contra
+    113 do modelo (cerca de 20% a menos).
 - **Comparação real × esperado:** o valor real fica **verde** quando está dentro da faixa esperada
   (média ± 1 desvio padrão) ou melhor que ela, e **vermelho** quando fica pior. "Melhor" significa
   erro menor para RMSE e MAE, e valor maior para R².
