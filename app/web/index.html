@@ -315,7 +315,13 @@
         ? `${r.n_rows} linhas previstas. O arquivo tem rótulos, então o desempenho real foi calculado. `
         : `${r.n_rows} linhas previstas. O arquivo não tem rótulos, então não há avaliação. `) + sizes);
       $("result").hidden = false;
-      SeriesPlots.setTest(bytesToText(lastCsv)); // depois de #result ficar visível
+      // Depois de #result ficar visível. Uma falha no gráfico (ex.: CDN do Chart.js
+      // bloqueado) não pode esconder o resultado da previsão, que já deu certo.
+      try {
+        SeriesPlots.setTest(bytesToText(lastCsv));
+      } catch (e) {
+        console.error("Gráfico de teste:", e);
+      }
     } catch (e) {
       showMsg(msg, "error", e.message);
     } finally {

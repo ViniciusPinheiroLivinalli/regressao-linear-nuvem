@@ -22,6 +22,12 @@
   }
 
   function draw(key, title, datasets) {
+    // Sem Chart.js (CDN fora do ar ou bloqueado) a página segue funcionando, só sem gráfico.
+    if (typeof Chart === "undefined") {
+      console.warn("Chart.js não carregou; gráfico de " + key + " omitido.");
+      clear(key);
+      return;
+    }
     const wrap = document.getElementById(key + "-chart-wrap");
     wrap.hidden = false; // precisa estar visível antes de criar o gráfico
     if (charts[key]) charts[key].destroy();
