@@ -66,6 +66,7 @@
       vertical-align: -2px; margin-right: 6px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .chart-box { position: relative; height: 360px; margin-top: 12px; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -100,6 +101,9 @@
         </table>
       </div>
     </div>
+    <div id="train-chart-wrap" hidden>
+      <div class="chart-box"><canvas id="train-chart"></canvas></div>
+    </div>
   </section>
 
   <section aria-labelledby="test-title">
@@ -120,12 +124,17 @@
         </div>
         <p class="hint" style="margin-top:8px">Verde: o real ficou dentro da faixa esperada (média ± 1 desvio padrão) ou melhor que ela.</p>
       </div>
+      <div id="test-chart-wrap" hidden>
+        <div class="chart-box"><canvas id="test-chart"></canvas></div>
+      </div>
       <p style="margin:12px 0 0"><button id="download-btn" class="secondary" type="button">Baixar previsões (.csv)</button></p>
     </div>
   </section>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="huffman.js"></script>
+<script src="plots.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -250,6 +259,18 @@
     return out;
   }
 
+  const bytesToText = (bytes) => new TextDecoder().decode(bytes);
+
+  // Reaproveita o upload compactado do treino para obter o ajuste do modelo (/predict).
+  async function plotTrainFit(formData) {
+    try {
+      const r = await api("/predict", { method: "POST", body: formData });
+      SeriesPlots.setTrain(bytesToText(Huffman.descompactar(base64ToBytes(r.predictions_huff))));
+    } catch (e) {
+      console.error("Gráfico de treino:", e);
+    }
+  }
+
   $("train-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     if (busy) return;
@@ -263,6 +284,7 @@
       $("result").hidden = true;
       lastCsv = null;
       showMsg(msg, "info", `Modelo treinado com sucesso. Envio compactado: ${ratio(up.original, up.packed)}.`);
+      await plotTrainFit(up.fd);
     } catch (e) {
       showMsg(msg, "error", e.message);
     } finally {
@@ -293,6 +315,7 @@
         ? `${r.n_rows} linhas previstas. O arquivo tem rótulos, então o desempenho real foi calculado. `
         : `${r.n_rows} linhas previstas. O arquivo não tem rótulos, então não há avaliação. `) + sizes);
       $("result").hidden = false;
+      SeriesPlots.setTest(bytesToText(lastCsv)); // depois de #result ficar visível
     } catch (e) {
       showMsg(msg, "error", e.message);
     } finally {
@@ -324,6 +347,7 @@
       hideMsg($("train-msg"));
       hideMsg($("test-msg"));
       lastCsv = null;
+      SeriesPlots.reset();
       showMsg(msg, "info", "Modelo resetado. Pronto para treinar em outra base.");
     } catch (e) {
       showMsg(msg, "error", e.message);
