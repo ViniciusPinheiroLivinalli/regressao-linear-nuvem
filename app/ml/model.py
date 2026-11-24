@@ -1,9 +1,7 @@
-"""Issue 3: pipeline de ML (MinMax + regressao linear).
+"""Pipeline de ML: normalizacao min-max + regressao linear por gradiente descendente.
 
-A interface publica (fit / predict / evaluate / save / load) nao depende da
-implementacao da regressao. Para trocar a LinearRegression do scikit-learn por
-uma implementacao propria, basta substituir o estimador em `_build_pipeline`
-(desde que siga a API fit/predict do scikit-learn).
+A regressao e implementacao propria (app/ml/regression.py). Do scikit-learn usamos
+o MinMaxScaler, o Pipeline, a divisao temporal e as metricas.
 """
 from pathlib import Path
 
@@ -11,11 +9,12 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.base import clone
-from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler
+
+from app.ml.regression import GradientDescentRegressor
 
 
 def _clean(value: float | None) -> float | None:
@@ -38,7 +37,7 @@ def _build_pipeline() -> Pipeline:
     return Pipeline(
         [
             ("scaler", MinMaxScaler()),
-            ("regressor", LinearRegression()),
+            ("regressor", GradientDescentRegressor()),
         ]
     )
 
@@ -55,6 +54,26 @@ class LinearModel:
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         # Somente transform: o teste nunca altera min/max do scaler.
         return self.pipeline.predict(X)
+
+    def training_summary(self, max_points: int = 300) -> dict:
+        """Epocas, convergencia e a curva de perda do ultimo fit (para o grafico).
+
+        A curva vem em RMSE (raiz do MSE, na mesma unidade de `time`) e reduzida a no
+        maximo `max_points` epocas, espacadas em escala log: a perda cai rapido no
+        comeco e quase nao muda no fim.
+        """
+        reg = self.pipeline.named_steps["regressor"]
+        losses = np.asarray(reg.loss_history_)
+        idx = np.unique(np.geomspace(1, len(losses), num=max_points).astype(int)) - 1
+        return {
+            "epochs": int(reg.n_epochs_),
+            "converged": bool(reg.converged_),
+            "learning_rate": float(reg.learning_rate),
+            "loss_curve": {
+                "epoch": (idx + 1).tolist(),
+                "rmse": np.sqrt(losses[idx]).round(4).tolist(),
+            },
+        }
 
     def evaluate(self, X: pd.DataFrame, y: pd.Series) -> dict:
         return compute_metrics(y, self.predict(X))
