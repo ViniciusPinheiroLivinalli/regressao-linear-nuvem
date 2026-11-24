@@ -59,6 +59,7 @@
     th:first-child, td:first-child { text-align: left; }
     th { color: var(--muted); font-weight: 600; font-size: .85rem; }
     .good { color: var(--ok); }
+    .warn { color: var(--warn); }
     .bad { color: var(--err); }
     .spinner {
       display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor;
@@ -125,7 +126,12 @@
             <tbody id="comparison-body"></tbody>
           </table>
         </div>
-        <p class="hint" style="margin-top:8px">Verde: o real ficou dentro da faixa esperada (média ± 1 desvio padrão) ou melhor que ela.</p>
+        <p class="hint" style="margin-top:8px">
+          <span class="good">▲ Verde</span>: real melhor que a média esperada ·
+          <span class="warn">▼ Amarelo</span>: pior que a média, mas dentro da faixa (± 1 desvio padrão) ·
+          <span class="bad">▼ Vermelho</span>: pior e fora da faixa.
+          Melhor = RMSE e MAE menores, R² maior.
+        </p>
       </div>
       <div id="test-chart-wrap" hidden>
         <div class="chart-box"><canvas id="test-chart"></canvas></div>
@@ -227,6 +233,16 @@
     }
   }
 
+  // Compara o real com o esperado. "Pior" depende da métrica: para RMSE e MAE é
+  // subir, para R² é descer. Três estados, para não pintar de verde algo que piorou.
+  function classifyMetric(real, mean, std, lowerIsBetter) {
+    const delta = real - mean;
+    const worse = lowerIsBetter ? delta : -delta; // > 0 significa pior que a média
+    if (worse <= 0) return { delta, cls: "good", label: "▲ melhor" };
+    if (worse <= (std || 0)) return { delta, cls: "warn", label: "▼ pior (dentro da faixa)" };
+    return { delta, cls: "bad", label: "▼ pior (fora da faixa)" };
+  }
+
   function renderComparison(real) {
     if (!real) { $("comparison").hidden = true; return; }
     $("comparison-body").innerHTML = METRICS.map((x) => {
@@ -235,10 +251,9 @@
       const r = real[x.key];
       let diff = "—", cls = "";
       if (mean !== null && mean !== undefined && r !== null && r !== undefined) {
-        const d = r - mean;
-        diff = (d >= 0 ? "+" : "") + d.toFixed(4);
-        const worse = x.lowerIsBetter ? d : -d; // > 0 significa pior que a média
-        cls = worse <= (std || 0) ? "good" : "bad";
+        const c = classifyMetric(r, mean, std, x.lowerIsBetter);
+        cls = c.cls;
+        diff = `${(c.delta >= 0 ? "+" : "") + c.delta.toFixed(4)} ${c.label}`;
       }
       const expected = mean === null || mean === undefined ? "—" : `${fmt(mean)} ± ${fmt(std)}`;
       return `<tr><td>${x.label}</td><td>${expected}</td><td class="${cls}">${fmt(r)}</td><td class="${cls}">${diff}</td></tr>`;
