@@ -65,14 +65,26 @@ Diagrama original do grupo: [Excalidraw](https://excalidraw.com/#json=MPl7fA3qPL
 
 ## Formato dos dados
 
-| Arquivo | Colunas (cabeçalho obrigatório, nessa ordem) |
+| Arquivo | Colunas obrigatórias no cabeçalho |
 |---|---|
 | Treino e teste com rótulo | `time-5,time-4,time-3,time-2,time-1,time` |
 | Teste sem rótulo | `time-5,time-4,time-3,time-2,time-1` |
 
-- Formato: separador vírgula, UTF-8, só valores numéricos e nenhuma célula vazia.
-- Limites: até 1 MB por arquivo. O treino exige pelo menos 30 linhas.
-- Um CSV fora do formato é recusado com uma mensagem que diz qual coluna ou linha está errada.
+**Aceito automaticamente (com aviso na página):**
+- **Ordem:** colunas em qualquer ordem. O cabeçalho ignora espaços e maiúsculas.
+- **Colunas extras:** um índice ou `id`, por exemplo, são ignoradas pelo modelo e devolvidas no CSV
+  de previsões, na posição original. Colunas sem nome viram `sem_nome_N`.
+- **Separador:** `;` ou tab, além de vírgula.
+- **Decimal com vírgula** (`12,5`), quando o separador não é vírgula. É o formato do Excel em
+  português.
+
+**Recusado, com a coluna e a linha do problema:**
+- falta de alguma das 5 features (e de `time`, no treino);
+- coluna repetida;
+- célula vazia;
+- valor não numérico.
+
+**Limites:** até 1 MB por arquivo, em UTF-8. O treino exige pelo menos 30 linhas.
 
 ## Decisões de machine learning
 
