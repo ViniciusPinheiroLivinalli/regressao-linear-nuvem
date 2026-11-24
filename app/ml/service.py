@@ -21,8 +21,8 @@ class PredictionResult:
     warnings: list[str]
 
 
-def train(store: ModelStore, raw: bytes) -> tuple[dict, list[str]]:
-    """Treina e devolve (metricas esperadas, avisos da leitura do CSV)."""
+def train(store: ModelStore, raw: bytes) -> tuple[dict, dict, list[str]]:
+    """Treina e devolve (metricas esperadas, resumo do treino, avisos do CSV)."""
     parsed = parse_csv(raw, mode="train")
     df = parsed.data
 
@@ -48,7 +48,7 @@ def train(store: ModelStore, raw: bytes) -> tuple[dict, list[str]]:
                 n_rows=len(df),
             )
         )
-        return metrics, parsed.warnings
+        return metrics, model.training_summary(), parsed.warnings
     finally:
         store.end_training()
 

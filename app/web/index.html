@@ -101,6 +101,9 @@
         </table>
       </div>
     </div>
+    <div id="loss-chart-wrap" hidden>
+      <div class="chart-box"><canvas id="loss-chart"></canvas></div>
+    </div>
     <div id="train-chart-wrap" hidden>
       <div class="chart-box"><canvas id="train-chart"></canvas></div>
     </div>
@@ -286,7 +289,15 @@
       const t = await api("/train", { method: "POST", body: up.fd });
       $("result").hidden = true;
       lastCsv = null;
-      showMsg(msg, "info", `Modelo treinado com sucesso. Envio compactado: ${ratio(up.original, up.packed)}.` + warningsText(t.warnings));
+      const epochs = t.training
+        ? ` Gradiente descendente: ${t.training.epochs} épocas${t.training.converged ? "" : " (sem convergir)"}.`
+        : "";
+      showMsg(msg, "info", `Modelo treinado com sucesso.${epochs} Envio compactado: ${ratio(up.original, up.packed)}.` + warningsText(t.warnings));
+      try {
+        SeriesPlots.setLoss(t.training);
+      } catch (e) {
+        console.error("Gráfico da curva de perda:", e);
+      }
       await plotTrainFit(up.fd);
     } catch (e) {
       showMsg(msg, "error", e.message);

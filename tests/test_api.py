@@ -41,7 +41,17 @@ def test_train_returns_estimated_metrics(client, train_df):
         assert body[f"{key}_std"] is not None
     assert body["n_rows"] == len(train_df)
     status = client.get("/status").json()
-    assert status["trained"] is True and status["metrics"] == body
+    assert status["trained"] is True
+    assert status["metrics"] == {k: v for k, v in body.items() if k != "training"}
+
+
+def test_train_returns_loss_curve(client, train_df):
+    training = post_csv(client, "/train", train_df).json()["training"]
+    assert training["converged"] is True and training["epochs"] > 1
+    curve = training["loss_curve"]
+    assert len(curve["epoch"]) == len(curve["rmse"]) <= 300
+    assert curve["epoch"][0] == 1 and curve["epoch"][-1] == training["epochs"]
+    assert curve["rmse"][-1] < curve["rmse"][0]  # a perda caiu
 
 
 def test_train_too_few_rows(client, train_df):
@@ -176,7 +186,7 @@ def test_declared_size_over_limit_413(client, monkeypatch, train_df):
 def test_predict_returns_expected_metrics(client, train_df, test_df):
     trained = post_csv(client, "/train", train_df).json()
     body = post_csv(client, "/predict", test_df).json()
-    assert body["expected_metrics"] == trained
+    assert body["expected_metrics"] == {k: v for k, v in trained.items() if k != "training"}
 
 
 def test_predict_keeps_extra_columns_and_reports_warnings(client, train_df, test_df):

@@ -21,7 +21,8 @@
     };
   }
 
-  function draw(key, title, datasets) {
+  // axes (opcional): eixos proprios, ex. para a curva de perda.
+  function draw(key, title, datasets, axes) {
     // Sem Chart.js (CDN fora do ar ou bloqueado) a página segue funcionando, só sem gráfico.
     if (typeof Chart === "undefined") {
       console.warn("Chart.js não carregou; gráfico de " + key + " omitido.");
@@ -43,7 +44,7 @@
         animation: false,
         parsing: false,
         interaction: { mode: "nearest", axis: "x", intersect: false },
-        scales: {
+        scales: axes || {
           x: { type: "linear", title: { display: true, text: "Linha / tempo" } },
           y: { title: { display: true, text: "Valor" } },
         },
@@ -81,6 +82,19 @@
       ]);
     },
 
-    reset() { clear("train"); clear("test"); },
+    /** Curva de aprendizado do gradiente descendente (resposta de /train). */
+    setLoss(training) {
+      const c = training.loss_curve;
+      const points = c.epoch.map((e, i) => ({ x: e, y: c.rmse[i] }));
+      const status = training.converged ? "convergiu" : "não convergiu";
+      draw("loss", `Treino: erro por época do gradiente descendente (${training.epochs} épocas, ${status})`, [
+        line("RMSE no treino", points, "#2457c5"),
+      ], {
+        x: { type: "logarithmic", title: { display: true, text: "Época (escala log)" } },
+        y: { title: { display: true, text: "RMSE (raiz da perda)" } },
+      });
+    },
+
+    reset() { clear("loss"); clear("train"); clear("test"); },
   };
 })();

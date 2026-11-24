@@ -62,8 +62,13 @@ def status(request: Request):
 @router.post("/train")
 async def train(request: Request, file: UploadFile = File(...)):
     raw = await _read_upload(file)
-    metrics, warnings = await run_in_threadpool(service.train, request.app.state.store, raw)
-    return {**metrics, "warnings": warnings} if warnings else metrics
+    metrics, training, warnings = await run_in_threadpool(
+        service.train, request.app.state.store, raw
+    )
+    body = {**metrics, "training": training}
+    if warnings:
+        body["warnings"] = warnings
+    return body
 
 
 @router.post("/predict")
