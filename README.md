@@ -8,8 +8,10 @@ temporal: o valor de um evento no momento atual (`time`) é previsto a partir da
 
 ## Como usar
 
-1. **Treino:** envie o CSV de treino. A página mostra o desempenho esperado (RMSE, MAE e R², com
-   média e desvio padrão) e um gráfico da série real × ajuste do modelo.
+1. **Treino:** envie o CSV de treino. A página mostra:
+   - o desempenho esperado (RMSE, MAE e R², com média e desvio padrão);
+   - a curva de aprendizado do gradiente descendente (erro por época);
+   - um gráfico da série real × ajuste do modelo.
 2. **Teste / aplicação:** envie o CSV de teste.
    - **Com a coluna `time`:** a página mostra a tabela **Esperado × Real × Diferença**, um gráfico
      da série real × predição e libera o download das previsões.
@@ -29,6 +31,7 @@ temporal: o valor de um evento no momento atual (`time`) é previsto a partir da
 | Expectativa de desempenho após o treino | Validação cruzada temporal ([Decisões](#decisões-de-machine-learning)) |
 | Teste **com rótulos**: previsões para download + desempenho real | Seção **Teste** → `POST /predict` |
 | Teste **sem rótulos**: só as previsões | Mesmo endpoint, que detecta a ausência da coluna `time` |
+| Algoritmo de regressão linear | Implementação própria por gradiente descendente (`app/ml/regression.py`) |
 | Tratamento de dados (min-max) | `MinMaxScaler` ajustado só no treino (`app/ml/model.py`) |
 | Arquivos tratados ponta-a-ponta (compactar ou criptografar) | Compactação Huffman nos dois sentidos ([Huffman](#compactação-huffman)) |
 | Reset do modelo | Botão **Resetar modelo** → `POST /reset` |
@@ -48,7 +51,7 @@ flowchart LR
     subgraph Azure App Service
         C[FastAPI] --> D[huffman.py<br/>descompactar]
         D --> E[validação do CSV]
-        E --> F[MinMax + regressão linear]
+        E --> F[MinMax + regressão linear<br/>gradiente descendente]
         F --> G[métricas + previsões]
         G --> H[huffman.py<br/>compactar]
     end
@@ -56,7 +59,8 @@ flowchart LR
     H -- "JSON: métricas + CSV compactado" --> J
 ```
 
-- **Backend:** Python 3.12, FastAPI, pandas e scikit-learn, num container Docker.
+- **Backend:** Python 3.12, FastAPI, pandas e numpy, num container Docker. A regressão é do grupo;
+  do scikit-learn usamos só o `MinMaxScaler`, o `Pipeline`, o `TimeSeriesSplit` e as métricas.
 - **Frontend:** uma página HTML servida pela própria API. Os gráficos usam Chart.js (via CDN). Se o
   CDN não carregar, a página continua funcionando, só sem os gráficos.
 - **Estado:** um único modelo global em memória, por isso o app roda com **uma instância**.
@@ -88,8 +92,22 @@ Diagrama original do grupo: [Excalidraw](https://excalidraw.com/#json=MPl7fA3qPL
 
 ## Decisões de machine learning
 
-- **Modelo:** pipeline `MinMaxScaler` → `LinearRegression` (mínimos quadrados) do scikit-learn,
-  isolado em `app/ml/model.py`.
+- **Modelo:** regressão linear múltipla **implementada pelo grupo** (`app/ml/regression.py`),
+  treinada por **gradiente descendente em lote**, depois do `MinMaxScaler`:
+  - **Previsão:** `time = w₁·(time-5) + … + w₅·(time-1) + b`.
+  - **Perda:** erro quadrático médio (MSE).
+  - **Atualização:** a cada época, `w ← w − α·(2/n)·Xᵀ(ŷ − y)` e `b ← b − α·(2/n)·Σ(ŷ − y)`.
+  - **Parâmetros:** os pesos começam em zero, `α = 0,1`, e o treino para quando o gradiente fica
+    abaixo de `1e-6`. Com a base do professor, leva cerca de 5.500 épocas, uns 30 ms.
+  - **Conferência:** os testes comparam o resultado com a solução exata de mínimos quadrados e
+    com o `LinearRegression` do scikit-learn. Os pesos coincidem (diferença < 0,0001), e as
+    métricas na base do professor são as mesmas.
+- **Por que o min-max é necessário:** o passo `α` só converge se for menor que um limite que
+  depende da escala dos dados.
+  - Com as features em [0, 1], qualquer `α < 1/6` converge para qualquer base, por isso usamos
+    `α = 0,1`.
+  - Sem normalizar, com valores de até 718, o mesmo passo faz os pesos explodirem (~10²¹⁶ em 50
+    épocas). Há um teste que demonstra isso.
 - **Min-max sem vazamento de dados:** o scaler aprende mínimo e máximo **só com o treino**. No
   teste ele apenas transforma os dados. Na validação cruzada, é reajustado a cada fold.
 - **Desempenho esperado com `TimeSeriesSplit(5)`:**
@@ -218,13 +236,14 @@ app/
   huffman.py                                compactação Huffman (servidor)
   api/routes.py                             endpoints; descompacta entradas e compacta saídas
   ml/validation.py                          leitura e validação do CSV
+  ml/regression.py                          regressão linear por gradiente descendente (do grupo)
   ml/model.py                               pipeline MinMax + regressão, validação temporal, métricas
   ml/service.py                             casos de uso de treino e predição
   web/index.html                            interface
   web/huffman.js                            compactação Huffman (navegador)
   web/plots.js                              gráficos de treino e teste
 scripts/                                    dados de exemplo, CLI do Huffman, deploy e remoção na Azure
-tests/                                      validação, modelo, API e Huffman (inclui JS × Python)
+tests/                                      validação, regressão, modelo, API e Huffman (inclui JS × Python)
 .github/workflows/deploy.yml                testes e deploy automático
 Dockerfile                                  imagem de produção
 ```
