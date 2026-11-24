@@ -125,19 +125,22 @@ Diagrama original do grupo: [Excalidraw](https://excalidraw.com/#json=MPl7fA3qPL
 
   | Métrica | Esperado (validação) | Real (teste) |
   |---|---|---|
-  | RMSE | 83,1 ± 13,6 | 113,0 |
-  | MAE | 60,7 ± 5,9 | 82,1 |
-  | R² | 0,397 ± 0,110 | 0,311 |
+  | RMSE | 83,1 ± 13,6 | 113,0 🔴 |
+  | MAE | 60,7 ± 5,9 | 82,1 🔴 |
+  | R² | 0,397 ± 0,110 | 0,311 🟡 |
 
   - **Erro absoluto maior que o esperado:** RMSE e MAE ficaram acima da faixa porque o teste é
     mais disperso que o treino (desvio padrão de `time` ≈ 136 contra ≈ 107).
-  - **R² dentro da faixa:** o R² desconta essa dispersão, ou seja, o modelo explica a variação na
-    proporção prevista.
+  - **R² pior, mas dentro da faixa:** o R² desconta essa dispersão. Ele caiu (0,311 contra 0,397),
+    mas ficou dentro da variação normal entre folds.
   - **Melhor que a referência ingênua:** prever sempre a média do treino daria RMSE 140, contra
     113 do modelo (cerca de 20% a menos).
-- **Comparação real × esperado:** o valor real fica **verde** quando está dentro da faixa esperada
-  (média ± 1 desvio padrão) ou melhor que ela, e **vermelho** quando fica pior. "Melhor" significa
-  erro menor para RMSE e MAE, e valor maior para R².
+- **Comparação real × esperado:** a coluna "Diferença" mostra quanto o real se afastou da média
+  esperada e em que direção. "Melhor" significa RMSE e MAE menores e R² maior.
+  - 🟢 **verde (▲ melhor):** real melhor que a média esperada;
+  - 🟡 **amarelo (▼ pior, dentro da faixa):** pior que a média, mas dentro de média ± 1 desvio
+    padrão, ou seja, na variação normal entre folds;
+  - 🔴 **vermelho (▼ pior, fora da faixa):** pior e fora dessa faixa.
 
 ## Compactação Huffman
 
