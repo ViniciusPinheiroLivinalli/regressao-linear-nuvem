@@ -177,3 +177,22 @@ def test_predict_returns_expected_metrics(client, train_df, test_df):
     trained = post_csv(client, "/train", train_df).json()
     body = post_csv(client, "/predict", test_df).json()
     assert body["expected_metrics"] == trained
+
+
+def test_predict_keeps_extra_columns_and_reports_warnings(client, train_df, test_df):
+    post_csv(client, "/train", train_df)
+    df = test_df.copy()
+    df.insert(0, "id", [f"r{i}" for i in range(len(df))])
+    raw = df.to_csv(index=False, sep=";").encode()
+    body = post_csv(client, "/predict", raw).json()
+    out = predictions(body)  # CSV de saida usa virgula
+    assert list(out.columns) == ["id"] + config.TRAIN_COLUMNS + ["prediction"]
+    assert out["id"].tolist() == df["id"].tolist()
+    assert any("id" in w for w in body["warnings"])
+    assert any("ponto e virgula" in w for w in body["warnings"])
+
+
+def test_train_warnings_only_when_needed(client, train_df):
+    assert "warnings" not in post_csv(client, "/train", train_df).json()
+    shuffled = train_df[list(reversed(train_df.columns))]
+    assert post_csv(client, "/train", shuffled).json()["warnings"]

@@ -13,16 +13,15 @@ def csv(header, *rows):
 
 
 def test_train_valid():
-    df, labeled = parse_csv(csv(HEADER, "1,2,3,4,5,6"), "train")
-    assert labeled is True
-    assert df.shape == (1, 6)
+    parsed = parse_csv(csv(HEADER, "1,2,3,4,5,6"), "train")
+    assert parsed.labeled is True
+    assert parsed.data.shape == (1, 6)
+    assert parsed.warnings == []
 
 
 def test_test_labeled_and_unlabeled_detected():
-    _, labeled = parse_csv(csv(HEADER, "1,2,3,4,5,6"), "test")
-    assert labeled is True
-    _, labeled = parse_csv(csv(HEADER_NO_LABEL, "1,2,3,4,5"), "test")
-    assert labeled is False
+    assert parse_csv(csv(HEADER, "1,2,3,4,5,6"), "test").labeled is True
+    assert parse_csv(csv(HEADER_NO_LABEL, "1,2,3,4,5"), "test").labeled is False
 
 
 def test_train_rejects_unlabeled_file():
@@ -35,11 +34,54 @@ def test_wrong_header_and_missing_column():
         parse_csv(csv("time-5,time-4,time-2,time-1,time", "1,2,3,4,5"), "train")
 
 
-def test_wrong_order_and_extra_column():
-    with pytest.raises(CsvValidationError, match="ordem"):
-        parse_csv(csv("time-4,time-5,time-3,time-2,time-1,time", "1,2,3,4,5,6"), "train")
-    with pytest.raises(CsvValidationError, match="inesperadas: foo"):
-        parse_csv(csv(HEADER + ",foo", "1,2,3,4,5,6,7"), "train")
+# --- Tolerancias ---
+def test_columns_in_any_order_are_reordered():
+    parsed = parse_csv(csv("time,time-1,time-2,time-3,time-4,time-5", "6,5,4,3,2,1"), "train")
+    assert list(parsed.data.columns) == config.TRAIN_COLUMNS
+    assert parsed.data.iloc[0].tolist() == [1, 2, 3, 4, 5, 6]
+    assert any("ordem" in w for w in parsed.warnings)
+
+
+def test_extra_columns_ignored_with_warning():
+    parsed = parse_csv(csv("id," + HEADER + ",obs", "a1,1,2,3,4,5,6,x"), "test")
+    assert list(parsed.data.columns) == config.TRAIN_COLUMNS
+    assert parsed.extras.iloc[0].tolist() == ["a1", "x"]
+    assert parsed.columns[0] == "id" and parsed.columns[-1] == "obs"
+    assert any("id, obs" in w for w in parsed.warnings)
+
+
+def test_header_spaces_and_case_normalized():
+    parsed = parse_csv(csv(" Time-5 , TIME-4,time-3,time-2,time-1, Time ", "1,2,3,4,5,6"), "train")
+    assert parsed.labeled is True
+    assert parsed.warnings == []
+
+
+@pytest.mark.parametrize("sep, name", [(";", "ponto e virgula"), ("\t", "tab")])
+def test_semicolon_and_tab_separators(sep, name):
+    header = sep.join(config.TRAIN_COLUMNS)
+    parsed = parse_csv(csv(header, sep.join("123456")), "train")
+    assert parsed.data.iloc[0].tolist() == [1, 2, 3, 4, 5, 6]
+    assert any(name in w for w in parsed.warnings)
+
+
+def test_decimal_comma_with_semicolon():
+    header = ";".join(config.TRAIN_COLUMNS)
+    parsed = parse_csv(csv(header, "1,5;2;3;4;5;6,25"), "train")
+    assert parsed.data["time-5"].iloc[0] == 1.5
+    assert parsed.data["time"].iloc[0] == 6.25
+    assert any("decimal" in w for w in parsed.warnings)
+
+
+# --- Continua rigido ---
+def test_repeated_column_rejected():
+    with pytest.raises(CsvValidationError, match="repetida no cabecalho: time-1"):
+        parse_csv(csv(HEADER + ",time-1", "1,2,3,4,5,6,7"), "train")
+
+
+def test_decimal_comma_with_comma_separator_is_not_guessed():
+    # Com virgula como separador, "1,5" vira duas celulas: a linha fica longa demais.
+    with pytest.raises(CsvValidationError):
+        parse_csv(csv(HEADER, "1,5,2,3,4,5,6"), "train")
 
 
 def test_non_numeric_reports_column_and_line():
@@ -82,3 +124,9 @@ def test_too_large(monkeypatch):
 def test_not_utf8():
     with pytest.raises(CsvValidationError, match="UTF-8"):
         parse_csv(b"\xff\xfe\x00bad", "train")
+
+
+def test_unnamed_index_columns_get_positional_names():
+    parsed = parse_csv(csv(",," + HEADER, "0,a,1,2,3,4,5,6"), "train")
+    assert parsed.columns[:2] == ["sem_nome_1", "sem_nome_2"]
+    assert any("sem_nome_1, sem_nome_2" in w for w in parsed.warnings)

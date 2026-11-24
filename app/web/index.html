@@ -261,6 +261,9 @@
 
   const bytesToText = (bytes) => new TextDecoder().decode(bytes);
 
+  // Avisos da leitura do CSV (separador detectado, colunas ignoradas etc.).
+  const warningsText = (w) => (w && w.length ? " Avisos: " + w.join(" ") : "");
+
   // Reaproveita o upload compactado do treino para obter o ajuste do modelo (/predict).
   async function plotTrainFit(formData) {
     try {
@@ -280,10 +283,10 @@
     setBusy(true, btn, "Treinando…");
     try {
       const up = await packFile($("train-file"));
-      await api("/train", { method: "POST", body: up.fd });
+      const t = await api("/train", { method: "POST", body: up.fd });
       $("result").hidden = true;
       lastCsv = null;
-      showMsg(msg, "info", `Modelo treinado com sucesso. Envio compactado: ${ratio(up.original, up.packed)}.`);
+      showMsg(msg, "info", `Modelo treinado com sucesso. Envio compactado: ${ratio(up.original, up.packed)}.` + warningsText(t.warnings));
       await plotTrainFit(up.fd);
     } catch (e) {
       showMsg(msg, "error", e.message);
@@ -313,7 +316,7 @@
       const sizes = `Envio: ${ratio(up.original, up.packed)} · retorno: ${ratio(lastCsv.length, packed.length)}.`;
       showMsg(msg, "info", (r.labeled
         ? `${r.n_rows} linhas previstas. O arquivo tem rótulos, então o desempenho real foi calculado. `
-        : `${r.n_rows} linhas previstas. O arquivo não tem rótulos, então não há avaliação. `) + sizes);
+        : `${r.n_rows} linhas previstas. O arquivo não tem rótulos, então não há avaliação. `) + sizes + warningsText(r.warnings));
       $("result").hidden = false;
       // Depois de #result ficar visível. Uma falha no gráfico (ex.: CDN do Chart.js
       // bloqueado) não pode esconder o resultado da previsão, que já deu certo.

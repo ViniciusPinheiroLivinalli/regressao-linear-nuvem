@@ -62,7 +62,8 @@ def status(request: Request):
 @router.post("/train")
 async def train(request: Request, file: UploadFile = File(...)):
     raw = await _read_upload(file)
-    return await run_in_threadpool(service.train, request.app.state.store, raw)
+    metrics, warnings = await run_in_threadpool(service.train, request.app.state.store, raw)
+    return {**metrics, "warnings": warnings} if warnings else metrics
 
 
 @router.post("/predict")
@@ -76,6 +77,7 @@ async def predict(request: Request, file: UploadFile = File(...)):
         "metrics": result.metrics,
         "expected_metrics": result.expected_metrics,
         "predictions_huff": base64.b64encode(packed).decode("ascii"),
+        "warnings": result.warnings,
     }
 
 

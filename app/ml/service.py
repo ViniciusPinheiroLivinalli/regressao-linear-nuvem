@@ -2,6 +2,8 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import pandas as pd
+
 from app import config
 from app.errors import CsvValidationError, NoModelError
 from app.ml.model import LinearModel
@@ -16,10 +18,13 @@ class PredictionResult:
     metrics: dict | None
     csv: str
     expected_metrics: dict
+    warnings: list[str]
 
 
-def train(store: ModelStore, raw: bytes) -> dict:
-    df, _ = parse_csv(raw, mode="train")
+def train(store: ModelStore, raw: bytes) -> tuple[dict, list[str]]:
+    """Treina e devolve (metricas esperadas, avisos da leitura do CSV)."""
+    parsed = parse_csv(raw, mode="train")
+    df = parsed.data
 
     min_rows = max(config.MIN_TRAIN_ROWS, 2 * (config.CV_SPLITS + 1))
     if len(df) < min_rows:
@@ -43,7 +48,7 @@ def train(store: ModelStore, raw: bytes) -> dict:
                 n_rows=len(df),
             )
         )
-        return metrics
+        return metrics, parsed.warnings
     finally:
         store.end_training()
 
@@ -53,10 +58,14 @@ def predict(store: ModelStore, raw: bytes) -> PredictionResult:
     if trained is None:
         raise NoModelError("Nenhum modelo treinado. Envie um CSV de treino primeiro.")
 
-    df, labeled = parse_csv(raw, mode="test")
+    parsed = parse_csv(raw, mode="test")
+    df, labeled = parsed.data, parsed.labeled
     X = df[config.FEATURES]
 
-    out = df.copy()
+    # Saida: colunas do arquivo na ordem original (extras como vieram) + prediction.
+    out = pd.DataFrame(
+        {c: (df[c] if c in df.columns else parsed.extras[c]) for c in parsed.columns}
+    )
     out["prediction"] = trained.model.predict(X)
     metrics = trained.model.evaluate(X, df[config.TARGET]) if labeled else None
 
@@ -66,4 +75,5 @@ def predict(store: ModelStore, raw: bytes) -> PredictionResult:
         metrics=metrics,
         csv=out.to_csv(index=False),
         expected_metrics=trained.metrics,
+        warnings=parsed.warnings,
     )
